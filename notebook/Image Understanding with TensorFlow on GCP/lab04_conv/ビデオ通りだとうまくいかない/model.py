@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 # Copyright 2017 Google Inc. All Rights Reserved.
 #
@@ -29,29 +28,16 @@ NCLASSES = 10
 
 def linear_model(img, mode, hparams):
     X = tf.reshape(tensor = img, shape = [-1, HEIGHT * WIDTH]) #flatten
-    #activationはNoneとのこと。最後は自動的にSoftmaxされる？
     ylogits = tf.layers.dense(inputs = X, units = NCLASSES, activation = None)
     return ylogits, NCLASSES
 
-
 def dnn_model(img, mode, hparams):
     # TODO: Implement DNN model with three hiddenlayers
-
-    dimension = 20
-
-    X = tf.reshape(tensor = img, shape = [-1, HEIGHT * WIDTH]) #flatten
-    a1 = tf.layers.dense(inputs = X, units = dimension, activation = tf.nn.relu)
-    a2 = tf.layers.dense(inputs = a1, units = dimension, activation = tf.nn.relu)
-    a3 = tf.layers.dense(inputs = a2, units = dimension, activation = tf.nn.relu)
-    ylogits = tf.layers.dense(inputs = a3, units = NCLASSES, activation = None)
-
-    return ylogits, NCLASSES
-
+    pass
 
 def dnn_dropout_model(img, mode, hparams):
     # TODO: Implement DNN model and apply dropout to the last hidden layer
     pass
-
 
 def cnn_model(img, mode, hparams):
     ksize1 = hparams.get('ksize1', 5)
@@ -59,26 +45,27 @@ def cnn_model(img, mode, hparams):
     nfil1 = hparams.get('nfil1', 10)
     nfil2 = hparams.get('nfil2', 20)
     dprob = hparams.get('dprob', 0.25)
-
+  
     c1 = tf.layers.conv2d(inputs = img, filters = nfil1,
                           kernel_size = ksize1, strides = 1,
                           padding = "same", activation = tf.nn.relu) # shape = (batch_size, HEIGHT, WIDTH, nfil1)
-
-    p1 = tf.layers.max_pooling2d(inputs = c1, pool_size = 2, strides = 2)
+    
     # shape = (batch_size, HEIGHT // 2, WIDTH // 2, nfil1)
-
-
+    p1 = tf.layers.max_pooling2d(inputs = c1, pool_size = 2, strides = 2) 
+    
     # TODO: apply a second convolution to the output of p1
-    c2 = None # shape = (batch_size, HEIGHT // 2, WIDTH // 2, nfil2)
-
-
-    # TODO: apply a pooling layer with pool_size = 2 and strides = 2
-    p2 = None # shape = (batch_size, HEIGHT // 4, WIDTH // 4, nfil2)
+    # shape = (batch_size, HEIGHT // 2, WIDTH // 2, nfil2)
+    c2 = tf.layers.conv2d(input=p1, filters=nfil2, kernel_size=ksize1, strides=1,
+                          padding = "same", activation=tf.nn.relu)
+        
+    # TODO: apply a pooling layer with pool_size(kernel size) = 2 and strides = 2
+    # shape = (batch_size, HEIGHT // 4, WIDTH // 4, nfil2)
+    p2 = tf.layers.max_pooling2d(inputs=c2, pool_size=2, strides=2)
 
     outlen = p2.shape[1] * p2.shape[2] * p2.shape[3] # HEIGHT // 4 * WIDTH // 4 * nfil2
     p2flat = tf.reshape(tensor = p2, shape = [-1, outlen]) # shape = (batch_size, HEIGHT // 4 * WIDTH // 4 * nfil2)
 
-    h3 = tf.layers.dense(inputs = p2flat, units = 300, activation = tf.nn.relu)
+    h3 = tf.layers.dense(inputs = p2flat, units = 300, activation = tf.nn.relu) 
     h3d = tf.layers.dropout(inputs = h3, rate = dprob, training = (mode == tf.estimator.ModeKeys.TRAIN))
 
     ylogits = tf.layers.dense(inputs = h3d, units = NCLASSES, activation = None)
@@ -88,7 +75,7 @@ def serving_input_fn():
     # Input will be rank 3
     feature_placeholders = {"image": tf.placeholder(dtype = tf.float32, shape = [None, HEIGHT, WIDTH])}
     # But model function requires rank 4
-    features = {"image": tf.expand_dims(input = feature_placeholders["image"], axis = -1)}
+    features = {"image": tf.expand_dims(input = feature_placeholders["image"], axis = -1)} 
     return tf.estimator.export.ServingInputReceiver(features = features, receiver_tensors = feature_placeholders)
 
 def image_classifier(features, labels, mode, params):
@@ -97,28 +84,25 @@ def image_classifier(features, labels, mode, params):
         "dnn": dnn_model,
         "dnn_dropout": dnn_dropout_model,
         "cnn": cnn_model}
-
-    ##なにこれ！！こんなことできるん？model_functionに関数と同じ名前のstringを代入している。
-    ## そして、それを()で実行できると！？
+    
     model_function = model_functions[params["model"]]
-
-    ## prediction...　ん、ちゃうか。実際のpredictionは下の方のtrain_and_evaluateか。
+    
     ylogits, nclasses = model_function(features["image"], mode, params)
 
     probabilities = tf.nn.softmax(logits = ylogits)
     class_ids = tf.cast(x = tf.argmax(input = probabilities, axis = 1), dtype = tf.uint8)
-
+    
     if mode == tf.estimator.ModeKeys.TRAIN or mode == tf.estimator.ModeKeys.EVAL:
         loss = tf.reduce_mean(input_tensor = tf.nn.softmax_cross_entropy_with_logits_v2(logits = ylogits, labels = labels))
-
+        
         if mode == tf.estimator.ModeKeys.TRAIN:
             # This is needed for batch normalization, but has no effect otherwise
             update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
             with tf.control_dependencies(update_ops):
                 train_op = tf.contrib.layers.optimize_loss(
-                    loss = loss,
+                    loss = loss, 
                     global_step = tf.train.get_global_step(),
-                    learning_rate = params["learning_rate"],
+                    learning_rate = params["learning_rate"], 
                     optimizer = "Adam")
             eval_metric_ops = None
         else:
@@ -128,7 +112,7 @@ def image_classifier(features, labels, mode, params):
         loss = None
         train_op = None
         eval_metric_ops = None
-
+ 
     return tf.estimator.EstimatorSpec(
         mode = mode,
         predictions = {"probabilities": probabilities, "class_ids": class_ids},
@@ -140,11 +124,11 @@ def image_classifier(features, labels, mode, params):
 
 def train_and_evaluate(output_dir, hparams):
     tf.summary.FileWriterCache.clear() # ensure filewriter cache is clear for TensorBoard events file
-
+    
     EVAL_INTERVAL = 60
-
+    
     mnist = input_data.read_data_sets("mnist/data", one_hot = True, reshape = False)
-
+    
     train_input_fn = tf.estimator.inputs.numpy_input_fn(
         x = {"image": mnist.train.images},
         y = mnist.train.labels,
